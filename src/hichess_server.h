@@ -49,6 +49,7 @@ private slots:
 private:
     QUdpSocket *m_udpServer;
     QWebSocketServer *m_webServer;
+    QString m_username;
     QQueue<Player> m_playerQueue;
     QSet<Player> m_allPlayers;
     QSet<Game> m_games;

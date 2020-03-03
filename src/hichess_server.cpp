@@ -72,8 +72,11 @@ void HichessServer::processPendingDatagrams()
             if (rx.match(username).hasMatch()) {
                 auto found = std::find_if(m_allPlayers.begin(), m_allPlayers.end(),
                                           [username](Player p) { return p.getName() == username; });
+
                 if (found == m_allPlayers.end()) {
+                    m_username = username;
                     socket->writeDatagram(m_webServer->serverUrl().toString().toUtf8(), datagram.senderAddress(), UDP_CLIENT_PORT);
+                    m_username.clear();
                 } else
                     qDebug() << username << " username is already occupied";
             } else
@@ -87,10 +90,16 @@ void HichessServer::addClient(QWebSocket *client)
     if (client == nullptr)
         return;
 
-    connect(client, &QWebSocket::textMessageReceived, this, )
-    m_clientQueue.enqueue(client);
-    if (m_clientQueue.size() > 1) {
-        Player player1 =
+    connect(client, &QWebSocket::textMessageReceived, this, [](){});
+
+    if (!m_username.isEmpty()) {
+        m_playerQueue.enqueue({m_username, client});
+        m_allPlayers.insert({m_username, client});
+
+        if (m_playerQueue.size() > 1) {
+            Game game({m_playerQueue.dequeue(), m_playerQueue.dequeue()});
+            m_games.insert(game);
+        }
     }
 }
 
