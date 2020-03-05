@@ -50,9 +50,10 @@ HichessServer::HichessServer(QObject *parent)
                     !address.ip().isLoopback() &&
                     address.ip().protocol() == QUdpSocket::IPv4Protocol)
                 {
-                    qDebug() << ">> Address " << address.ip().toString();
-                    qDebug() << ">> Bind " << m_udpServer->bind(address.ip(), UDP_SERVER_PORT, QUdpSocket::ShareAddress);
-                    qDebug() << ">> Listen " << m_webServer->listen(address.ip(), WEB_PORT);
+                    qDebug() << Q_FUNC_INFO << address.ip().toString();
+                    qDebug() << Q_FUNC_INFO << m_udpServer->bind(address.ip(), UDP_SERVER_PORT, QUdpSocket::ShareAddress);
+                    qDebug() << Q_FUNC_INFO << m_udpServer->localAddress() << m_udpServer->localPort();
+                    qDebug() << Q_FUNC_INFO << m_webServer->listen(address.ip(), WEB_PORT);
                     return;
                 }
         }
