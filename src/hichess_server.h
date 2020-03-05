@@ -8,7 +8,7 @@ class Player
 {
 public:
     Player(const QString&, QWebSocket*);
-    bool operator==(const Player&);
+    bool operator==(const Player&) const;
 
     QString getName() const { return m_name; }
     QWebSocket* getWSocket() const { return m_wsocket; }
@@ -24,10 +24,10 @@ class Game
 {
 public:
     Game(const PlayerPair&);
-    bool operator==(const Game&);
+    bool operator==(const Game&) const;
 
     QString getName() const { return m_name; }
-    PlayerPair getPlayers() const { return m_players; }
+    PlayerPair getPlayers() { return m_players; }
 
 private:
     QString m_name;
@@ -49,10 +49,11 @@ private slots:
 private:
     QUdpSocket *m_udpServer;
     QWebSocketServer *m_webServer;
-    QString m_username;
+    QQueue<QString> m_usernameQueue;
     QQueue<Player> m_playerQueue;
-    QSet<Player> m_allPlayers;
-    QSet<Game> m_games;
+    QList<Player> m_allPlayers;
+    QList<Game> m_games;
 
+    void manageConnections();
     void addClient(QWebSocket*);
 };

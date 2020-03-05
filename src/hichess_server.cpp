@@ -12,18 +12,17 @@ Player::Player(const QString& name, QWebSocket *wsocket)
     , m_name(name)
 {}
 
-bool Player::operator==(const Player &other)
+bool Player::operator==(const Player &other) const
 {
     return m_name == other.getName();
 }
-
 
 Game::Game(const PlayerPair &players)
     : m_name(QString("%1 vs %2").arg(players.first.getName(), players.second.getName()))
     , m_players(players)
 {}
 
-bool Game::operator==(const Game &other)
+bool Game::operator==(const Game &other) const
 {
     return m_name == other.getName();
 }
@@ -62,9 +61,9 @@ HichessServer::HichessServer(QObject *parent)
 void HichessServer::processPendingDatagrams()
 {
     QUdpSocket *socket = qobject_cast<QUdpSocket*>(sender());
-
     if (socket && socket->hasPendingDatagrams()) {
         QNetworkDatagram datagram = socket->receiveDatagram();
+        qDebug() << datagram.data();
         if (datagram.data().startsWith("User = ")) {
             QString username = datagram.data().mid(7);
             QRegularExpression rx("[A-Za-z0-9_]{6,15}");
@@ -74,9 +73,9 @@ void HichessServer::processPendingDatagrams()
                                           [username](Player p) { return p.getName() == username; });
 
                 if (found == m_allPlayers.end()) {
-                    m_username = username;
+                    qDebug() << m_webServer->serverUrl().toString().toUtf8();
+                    m_usernameQueue.enqueue(username);
                     socket->writeDatagram(m_webServer->serverUrl().toString().toUtf8(), datagram.senderAddress(), UDP_CLIENT_PORT);
-                    m_username.clear();
                 } else
                     qDebug() << username << " username is already occupied";
             } else
@@ -87,24 +86,35 @@ void HichessServer::processPendingDatagrams()
 
 void HichessServer::addClient(QWebSocket *client)
 {
-    if (client == nullptr)
+    if (client == nullptr) {
+        qDebug() << Q_FUNC_INFO << " Client is nullptr";
         return;
+    }
 
     connect(client, &QWebSocket::textMessageReceived, this, [](){});
 
-    if (!m_username.isEmpty()) {
-        m_playerQueue.enqueue({m_username, client});
-        m_allPlayers.insert({m_username, client});
+    if (!m_usernameQueue.isEmpty()) {
+        QString username = m_usernameQueue.dequeue();
+        m_playerQueue.enqueue({username, client});
+        m_allPlayers.append({username, client});
 
         if (m_playerQueue.size() > 1) {
             Game game({m_playerQueue.dequeue(), m_playerQueue.dequeue()});
-            m_games.insert(game);
+            m_games.append(game);
         }
+        foreach (auto p, m_allPlayers)
+            qDebug() << p.getName();
     }
 }
 
 void HichessServer::onNewConnection()
 {
-    auto thread = QThread::create([this](){addClient(qobject_cast<QWebSocket*>(sender())); } );
+    qDebug() << Q_FUNC_INFO;
+    auto thread = QThread::create([this](){addClient(m_webServer->nextPendingConnection()); } );
     thread->start();
+}
+
+void HichessServer::onTextMessageReceived()
+{
+
 }
