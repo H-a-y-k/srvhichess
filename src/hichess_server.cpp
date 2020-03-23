@@ -4,23 +4,6 @@
 #define UDP_CLIENT_PORT 45455
 #define WEB_PORT 54545
 
-namespace {
-Username getUsername(const Player &p)
-{
-    return p.first;
-}
-
-QWebSocket* getWSocket(const Player &p)
-{
-    return p.second;
-}
-
-QString getGameName(const Game &g)
-{
-    return getUsername(g.first) + " vs " + getUsername(g.second);
-}
-}
-
 
 HichessServer::HichessServer(QObject *parent)
     : QObject(parent)
@@ -152,36 +135,3 @@ void HichessServer::onTextMessageReceived()
 {
 
 }
-
-/*
- *         foreach (Game g, m_games) {
-            if (g.getWhite() == *p) {
-                qDebug() << "Found game with insufficient players. White player is missing";
-
-                foreach (const auto &_g, m_games)
-                    if (_g.getName() == g.getName())
-                        m_games.removeAll(_g);
-
-                qDebug() << "Games after removal:";
-                foreach (const auto &g, m_games)
-                    qDebug() << g.getName();
-
-                g.getBlack().getWSocket()->sendTextMessage(p->getName() + " left the game");
-                break;
-            } else if (g.getBlack() == *p) {
-                qDebug() << Q_FUNC_INFO << "Found game with insufficient players. Black player is missing";
-
-                foreach (const auto &_g, m_games)
-                    if (_g.getName() == g.getName())
-                        m_games.removeAll(_g);
-
-                qDebug() << "Games after removal:";
-                foreach (const auto &g, m_games)
-                    qDebug() << g.getName();
-
-                g.getBlack().getWSocket()->sendTextMessage(p->getName() + " left the game");
-                break;
-            } else
-                qDebug() << Q_FUNC_INFO << "Client is not inside a game";
-        }
-        */
