@@ -28,6 +28,7 @@ private:
     QMap<Username, QWebSocket*> m_playersMap;
     QSet<Game> m_gamesSet;
 
+    void showServerInfo();
     void addClient(QWebSocket*);
     void removeClient(QWebSocket*);
 };

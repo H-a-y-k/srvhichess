@@ -40,6 +40,23 @@ HichessServer::HichessServer(QObject *parent)
         }
 }
 
+void HichessServer::showServerInfo()
+{
+    QDebug dbg = qDebug().nospace().noquote();
+
+    dbg << "\n===Player queue===\n";
+    foreach (const Player &p, m_playerQueue)
+        dbg << "(" << p.first << ", " << p.second << ")\n";
+
+    dbg << "\n===Players===\n";
+    foreach (const Username &name, m_playersMap.keys())
+        dbg << "(" << name << ", " << m_playersMap[name] << ")\n";
+
+    dbg << "\n===Games===\n";
+    foreach (const Game &g, m_gamesSet)
+        dbg << "(" << g.first.first << " - " << g.second.first << ")\n";
+}
+
 void HichessServer::processPendingDatagrams()
 {
     qDebug() << Q_FUNC_INFO;
@@ -96,11 +113,15 @@ void HichessServer::addClient(QWebSocket *client)
 
         if (m_playerQueue.size() > 1) {
             qDebug() << Q_FUNC_INFO << "There are more than 1 queued players. Found pair for a game...";
+
             Game game = {m_playerQueue.dequeue(), m_playerQueue.dequeue()};
-            m_gamesSet.insert(game);
+            if (QRandomGenerator::global()->bounded(true))
+                m_gamesSet << game;
+            else
+                m_gamesSet << qMakePair(game.second, game.first);
         }
 
-        qDebug() << m_playersMap;
+        showServerInfo();
     } else
         qDebug() << Q_FUNC_INFO << "There are no queued usernames";
 
@@ -132,9 +153,7 @@ void HichessServer::removeClient(QWebSocket *client)
     client->deleteLater();
     qDebug() << player << " left the game";
 
-    qDebug() << "Player queue:" << m_playerQueue;
-    qDebug() << "Players:" << m_playersMap;
-    qDebug() << "Games:" << m_gamesSet;
+    showServerInfo();
 }
 
 void HichessServer::onNewConnection()
