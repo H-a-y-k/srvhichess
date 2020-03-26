@@ -4,9 +4,9 @@
 #include <QtWebSockets>
 #include <QtNetwork>
 
-typedef QString Username;
-typedef QPair<Username, QWebSocket*> Player;
-typedef QPair<Player, Player> Game;
+using Username = QString;
+using Player = QPair<Username, QWebSocket*>;
+using Game = QPair<Player, Player>;
 
 class HichessServer : public QObject
 {
@@ -25,8 +25,8 @@ private:
     QWebSocketServer *m_webServer;
     QQueue<Username> m_usernameQueue;
     QQueue<Player> m_playerQueue;
-    QMap<Username, QWebSocket*> m_players;
-    QList<Game> m_games;
+    QMap<Username, QWebSocket*> m_playersMap;
+    QSet<Game> m_gamesSet;
 
     void addClient(QWebSocket*);
     void removeClient(QWebSocket*);
