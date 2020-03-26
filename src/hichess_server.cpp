@@ -88,7 +88,7 @@ void HichessServer::addClient(QWebSocket *client)
     if (!m_usernameQueue.isEmpty()) {
 //        qDebug() << "There are queued usernames";
 
-        QString username = m_usernameQueue.dequeue().toLower();
+        Username username = m_usernameQueue.dequeue().toLower();
         qDebug() << "Username: " << username;
 
         m_playerQueue.enqueue({username, client});
