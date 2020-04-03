@@ -1,9 +1,24 @@
 #include "hichess_server.h"
+#include <memory>
+
+using namespace Server;
 
 namespace {
-constexpr auto UDP_SERVER_PORT = 45454;
-constexpr auto UDP_CLIENT_PORT = 45455;
 constexpr auto WEB_PORT = 54545;
+}
+
+Packet Packet::fromByteArray(const QByteArray &bytearray)
+{
+    Packet packet;
+    QDataStream datastream(bytearray);
+
+    quint8 type;
+    datastream >> type;
+    packet.type = static_cast<PacketType>(type);
+
+    datastream >> packet.payload;
+
+    return packet;
 }
 
 HichessServer::HichessServer(QObject *parent)
@@ -12,32 +27,15 @@ HichessServer::HichessServer(QObject *parent)
     m_udpServer = new QUdpSocket(this);
     m_webServer = new QWebSocketServer("HichessServer", QWebSocketServer::NonSecureMode, this);
 
-    connect(m_udpServer, &QUdpSocket::readyRead, this, &HichessServer::processPendingDatagrams);
-    connect(m_webServer, &QWebSocketServer::newConnection, this, &HichessServer::onNewConnection);
+    connect(m_webServer, &QWebSocketServer::newConnection, this, &HichessServer::addClient);
     connect(m_webServer, &QWebSocketServer::serverError, this,
             [](QWebSocketProtocol::CloseCode closeCode) { qDebug() << closeCode; });
 
-    QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
-    foreach (QNetworkInterface interface, interfaces)
-        if (interface.isValid() &&
-            !interface.flags().testFlag(QNetworkInterface::IsLoopBack) &&
-            !interface.flags().testFlag(QNetworkInterface::IsPointToPoint) &&
-            interface.flags().testFlag(QNetworkInterface::IsUp) &&
-            interface.flags().testFlag(QNetworkInterface::IsRunning))
-        {
-            QList<QNetworkAddressEntry> addresses = interface.addressEntries();
-            foreach (QNetworkAddressEntry address, addresses)
-                if (!address.ip().isNull() &&
-                    !address.ip().isLoopback() &&
-                    address.ip().protocol() == QUdpSocket::IPv4Protocol)
-                {
-                    qDebug() << "IP:" << address.ip().toString();
-                    qDebug() << "Bound:" << m_udpServer->bind(address.ip(), UDP_SERVER_PORT, QUdpSocket::ShareAddress);
-                    qDebug() << "Port:" << m_udpServer->localPort();
-                    qDebug() << "Listening:" << m_webServer->listen(address.ip(), WEB_PORT) << '\n';
-                    return;
-                }
-        }
+    QHostAddress address("192.168.56.1");
+    qDebug() << "Listening" << m_webServer->listen(address, WEB_PORT);
+    qDebug() << "Address" << address;
+    qDebug() << "Port" << WEB_PORT;
+    qDebug() << "URL" << m_webServer->serverUrl();
 }
 
 void HichessServer::showServerInfo()
@@ -45,124 +43,111 @@ void HichessServer::showServerInfo()
     QDebug dbg = qDebug().nospace().noquote();
 
     dbg << "\n===Player queue===\n";
-    foreach (const Player &p, m_playerQueue)
+    for (const Player &p : m_playerQueue)
         dbg << "(" << p.first << ", " << p.second << ")\n";
+    if (m_playerQueue.isEmpty())
+        dbg << "None\n";
 
     dbg << "\n===Players===\n";
-    foreach (const Username &name, m_playersMap.keys())
-        dbg << "(" << name << ", " << m_playersMap[name] << ")\n";
+    for (auto it = m_playerMap.begin(); it != m_playerMap.end(); ++it)
+        dbg << "(" << it.key() << ", " << it.value() << ")\n";
+    if (m_playerMap.isEmpty())
+        dbg << "None\n";
 
     dbg << "\n===Games===\n";
-    foreach (const Game &g, m_gamesSet)
-        dbg << "(" << g.first.first << " - " << g.second.first << ")\n";
+    for (const Game &g : m_gameSet)
+        dbg << "(" << g.first.first << " vs " << g.second.first << ")\n";
+    if (m_gameSet.isEmpty())
+        dbg << "None\n";
 }
 
-void HichessServer::processPendingDatagrams()
+
+void HichessServer::addClient()
 {
     qDebug() << Q_FUNC_INFO;
 
-    auto *socket = qobject_cast<QUdpSocket*>(sender());
-    if (socket && socket->hasPendingDatagrams()) {
-        QNetworkDatagram datagram = socket->receiveDatagram();
-        qDebug() << "Datagram data: " << datagram.data();
-
-            Username username = datagram.data();
-            QRegularExpression rx("[A-Za-z0-9_]{6,15}");
-
-        if (rx.match(username).hasMatch()) {
-            qDebug() << "Parsed username is valid...";
-
-            if (!m_usernameQueue.contains(username)) {
-                qDebug() << username << "username is not occupied";
-                qDebug() << "Url:" << m_webServer->serverUrl().toString().toUtf8();
-                m_usernameQueue.enqueue(username);
-                socket->writeDatagram(m_webServer->serverUrl().toString().toUtf8(), datagram.senderAddress(), UDP_CLIENT_PORT);
-            } else
-                qDebug() << username << "username is already occupied";
-        } else
-            qDebug() << username << "is not a valid username";
-    }
-}
-
-void HichessServer::addClient(QWebSocket *client)
-{
-    qDebug() << Q_FUNC_INFO;
+    auto client = *std::make_unique<QWebSocket*>(m_webServer->nextPendingConnection()).get();
 
     if (client == nullptr) {
-        qDebug() << Q_FUNC_INFO << "Client is nullptr";
+        qDebug() << Q_FUNC_INFO << "There are no pending connections";
         return;
     }
     qDebug() << "Client: " << client;
 
-    connect(client, &QWebSocket::disconnected, this, [this, client]() {
-        qDebug() << client << "disconnected";
+    connect(client, &QWebSocket::disconnected, [this, client]() {
         removeClient(client);
     });
-    connect(client, &QWebSocket::textMessageReceived, this, [](){});
-    connect(client, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
-        [=](QAbstractSocket::SocketError error){ qDebug() << Q_FUNC_INFO << error; });
-
-    if (!m_usernameQueue.isEmpty()) {
-//        qDebug() << "There are queued usernames";
-
-        Username username = m_usernameQueue.dequeue().toLower();
-        qDebug() << "Username: " << username;
-
-        m_playerQueue.enqueue({username, client});
-        m_playersMap.insert(username, client);
-
-        if (m_playerQueue.size() > 1) {
-            qDebug() << Q_FUNC_INFO << "There are more than 1 queued players. Found pair for a game...";
-
-            Game game = {m_playerQueue.dequeue(), m_playerQueue.dequeue()};
-            if (QRandomGenerator::global()->bounded(true))
-                m_gamesSet << game;
-            else
-                m_gamesSet << qMakePair(game.second, game.first);
-        }
-
-        showServerInfo();
-    } else
-        qDebug() << Q_FUNC_INFO << "There are no queued usernames";
-
-    qDebug() << "";
+    connect(client, &QWebSocket::binaryMessageReceived, [this, client](const QByteArray &message) {
+       processBinaryMessage(client, message);
+    });
+    connect(client, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error), this,
+        [](QAbstractSocket::SocketError error){ qDebug() << error; });
 }
 
 void HichessServer::removeClient(QWebSocket *client)
 {
     qDebug() << Q_FUNC_INFO;
-    if (m_playersMap.key(client) == Username()) {
-        qDebug() << "Client not found";
+    if (m_playerMap.key(client) == Username()) {
+        qDebug() << " found";
         return;
     }
-    qDebug() << m_playersMap;
+    qDebug() << m_playerMap;
 
-    Username username = m_playersMap.key(client);
+    Username username = m_playerMap.key(client);
     Player player = {username, client};
 
     qDebug() << "Found the player to remove" << player;
 
     m_playerQueue.removeAll(player);
-    m_playersMap.remove(username);
-    for(auto it = m_gamesSet.begin(); it != m_gamesSet.end(); ++it)
-        if (it->first == player || it->second == player) {
-            m_gamesSet.erase(it);
+    m_playerMap.remove(username);
+    for (auto it = m_gameSet.begin(); it != m_gameSet.end(); ++it)
+        if (it->first == player) {
+            m_gameSet.erase(it);
+            Player secondP = it->second;
+            // TODO adjust player removal
+            secondP.second->sendTextMessage(QStringLiteral("Player %0 left the game").arg(secondP.first));
             break;
         }
 
     client->deleteLater();
-    qDebug() << player << " left the game";
+    qDebug() << "Player" << player << "left the game";
 
     showServerInfo();
 }
 
-void HichessServer::onNewConnection()
+void HichessServer::processBinaryMessage(QWebSocket *client, const QByteArray &message)
 {
-    auto cli = m_webServer->nextPendingConnection();
-    addClient(cli);
-}
+    Packet packet = Packet::fromByteArray(message);
 
-void HichessServer::onTextMessageReceived()
-{
+    switch (packet.type) {
+    case NONE: {
+        break;
+    }
+    case USER_INFO: {
 
+        Username username = packet.payload;
+        qDebug() << "Username: " << username;
+
+        m_playerQueue.enqueue({username, client});
+        m_playerMap.insert(username, client);
+
+        if (m_playerQueue.size() > 1) {
+            qDebug() << "There are more than 1 queued players. Found pair for a game...";
+
+            Game game = {m_playerQueue.dequeue(), m_playerQueue.dequeue()};
+            if (QRandomGenerator::global()->bounded(true))
+                m_gameSet << game;
+            else
+                m_gameSet << qMakePair(game.second, game.first);
+        }
+
+        showServerInfo();
+        break;
+    }
+    case MESSAGE: {
+        break;
+    }
+    case MOVE: {
+    }
+    }
 }
