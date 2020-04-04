@@ -3,37 +3,44 @@
 #include <QtCore>
 #include <QtWebSockets>
 #include <QtNetwork>
+#include <functional>
+
+
+namespace Hichess {
+
+struct Packet
+{
+    enum DetailsType {
+        NONE = 0,
+        USER_INFO,
+        MESSAGE,
+        MOVE
+    };
+
+    DetailsType detailsType = NONE;
+    QString payload;
+
+    Packet() = default;
+    Packet(DetailsType detailsType, const QString &payload);
+    QByteArray serialize();
+    static Packet deserialize(const QByteArray&);
+};
 
 using Username = QString;
 using Player = QPair<Username, QWebSocket*>;
 using Game = QPair<Player, Player>;
+using ProcessPayloadFn_t = std::function<void(QWebSocket*, const QString&)>;
 
-
-namespace Server {
-enum PacketType {
-    NONE = 0,
-    USER_INFO,
-    MESSAGE,
-    MOVE
-};
-
-struct Packet
-{
-    PacketType type = NONE;
-    QString payload;
-
-    static Packet fromByteArray(const QByteArray &bytearray);
-};
-
-class HichessServer : public QObject
+class Server : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit HichessServer(QObject *parent = nullptr);
+    explicit Server(QObject *parent = nullptr);
 
 private slots:
     void addClient();
+    void removeClient(QWebSocket*);
 
 private:
     QUdpSocket *m_udpServer;
@@ -41,9 +48,12 @@ private:
     QQueue<Player> m_playerQueue;
     QMap<Username, QWebSocket*> m_playerMap;
     QSet<Game> m_gameSet;
+    QMap<Packet::DetailsType, ProcessPayloadFn_t> m_functionMapper;
 
     void showServerInfo();
-    void removeClient(QWebSocket*);
-    void processBinaryMessage(QWebSocket *client, const QByteArray&);
+    void processUserInfo(QWebSocket*, const QString&);
+    void processMessage(QWebSocket*, const QString&);
+    void processMove(QWebSocket*, const QString&);
+    void processBinaryMessage(QWebSocket*, const QByteArray&);
 };
 }

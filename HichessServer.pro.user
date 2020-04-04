@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.10.0, 2020-03-28T11:11:12. -->
+<!-- Written by QtCreator 4.10.0, 2020-04-04T13:33:03. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -61,10 +61,10 @@
    <value type="bool" key="ClangCodeModel.UseGlobalConfig">true</value>
    <value type="bool" key="ClangTools.BuildBeforeAnalysis">true</value>
    <value type="QString" key="ClangTools.DiagnosticConfig">Builtin.TidyAndClazy</value>
-   <valuelist type="QVariantList" key="ClangTools.SelectedDirs">
-    <value type="QString">C:/Users/ASUS/Desktop/HichessServer/HichessServer.pro</value>
+   <valuelist type="QVariantList" key="ClangTools.SelectedDirs"/>
+   <valuelist type="QVariantList" key="ClangTools.SelectedFiles">
+    <value type="QString">C:/Users/ASUS/Desktop/HichessServer/src/hichess_server.cpp</value>
    </valuelist>
-   <valuelist type="QVariantList" key="ClangTools.SelectedFiles"/>
    <valuelist type="QVariantList" key="ClangTools.SuppressedDiagnostics">
     <valuemap type="QVariantMap">
      <value type="QString" key="ClangTools.SuppressedDiagnosticContext"></value>
@@ -79,6 +79,13 @@
      <value type="QString" key="ClangTools.SuppressedDiagnosticFilePath">src/hichess_server.cpp</value>
      <value type="QString" key="ClangTools.SuppressedDiagnosticMessage">use auto when initializing with a template cast to avoid duplicating the type name [modernize-use-auto]</value>
      <value type="int" key="ClangTools.SuppressedDiagnosticUniquifier">1</value>
+    </valuemap>
+    <valuemap type="QVariantMap">
+     <value type="QString" key="ClangTools.SuppressedDiagnosticContext"></value>
+     <value type="QString" key="ClangTools.SuppressedDiagnosticContextKind"></value>
+     <value type="QString" key="ClangTools.SuppressedDiagnosticFilePath">src/hichess_server.cpp</value>
+     <value type="QString" key="ClangTools.SuppressedDiagnosticMessage">std::move of the variable 'client' of the trivially-copyable type 'QWebSocket *' has no effect; remove std::move() [performance-move-const-arg]</value>
+     <value type="int" key="ClangTools.SuppressedDiagnosticUniquifier">2</value>
     </valuemap>
    </valuelist>
    <value type="bool" key="ClangTools.UseGlobalSettings">true</value>

@@ -1,33 +1,57 @@
 #include "hichess_server.h"
 #include <memory>
 
-using namespace Server;
+using namespace Hichess;
 
 namespace {
 constexpr auto WEB_PORT = 54545;
 }
 
-Packet Packet::fromByteArray(const QByteArray &bytearray)
+Packet::Packet(DetailsType detailsType, const QString &payload)
+    : detailsType(detailsType)
+    , payload(payload)
+{}
+
+QByteArray Packet::serialize()
+{
+    QByteArray bytearray;
+    QDataStream datastream(&bytearray, QIODevice::WriteOnly);
+
+    datastream << static_cast<quint8>(detailsType);
+    datastream << payload;
+
+    return bytearray;
+}
+
+Packet Packet::deserialize(const QByteArray &bytearray)
 {
     Packet packet;
     QDataStream datastream(bytearray);
 
-    quint8 type;
-    datastream >> type;
-    packet.type = static_cast<PacketType>(type);
+    quint8 detailsT;
+    datastream >> detailsT;
+    packet.detailsType = static_cast<DetailsType>(detailsT);
 
     datastream >> packet.payload;
 
     return packet;
 }
 
-HichessServer::HichessServer(QObject *parent)
+Server::Server(QObject *parent)
     : QObject(parent)
 {
     m_udpServer = new QUdpSocket(this);
-    m_webServer = new QWebSocketServer("HichessServer", QWebSocketServer::NonSecureMode, this);
+    m_webServer = new QWebSocketServer("Server", QWebSocketServer::NonSecureMode, this);
 
-    connect(m_webServer, &QWebSocketServer::newConnection, this, &HichessServer::addClient);
+    using namespace std::placeholders;
+    m_functionMapper =
+    {
+        {Packet::USER_INFO, std::bind(&Server::processUserInfo, this, _1, _2)},
+        {Packet::MESSAGE, std::bind(&Server::processMessage, this, _1, _2)},
+        {Packet::MOVE, std::bind(&Server::processMove, this, _1, _2)}
+    };
+
+    connect(m_webServer, &QWebSocketServer::newConnection, this, &Server::addClient);
     connect(m_webServer, &QWebSocketServer::serverError, this,
             [](QWebSocketProtocol::CloseCode closeCode) { qDebug() << closeCode; });
 
@@ -38,7 +62,7 @@ HichessServer::HichessServer(QObject *parent)
     qDebug() << "URL" << m_webServer->serverUrl();
 }
 
-void HichessServer::showServerInfo()
+void Server::showServerInfo()
 {
     QDebug dbg = qDebug().nospace().noquote();
 
@@ -62,7 +86,7 @@ void HichessServer::showServerInfo()
 }
 
 
-void HichessServer::addClient()
+void Server::addClient()
 {
     qDebug() << Q_FUNC_INFO;
 
@@ -74,17 +98,15 @@ void HichessServer::addClient()
     }
     qDebug() << "Client: " << client;
 
-    connect(client, &QWebSocket::disconnected, [this, client]() {
-        removeClient(client);
-    });
+    connect(client, &QWebSocket::disconnected, std::bind(&Server::removeClient, this, client));
     connect(client, &QWebSocket::binaryMessageReceived, [this, client](const QByteArray &message) {
-       processBinaryMessage(client, message);
+        processBinaryMessage(client, message);
     });
     connect(client, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error), this,
-        [](QAbstractSocket::SocketError error){ qDebug() << error; });
+            [](QAbstractSocket::SocketError error){ qDebug() << error; });
 }
 
-void HichessServer::removeClient(QWebSocket *client)
+void Server::removeClient(QWebSocket *client)
 {
     qDebug() << Q_FUNC_INFO;
     if (m_playerMap.key(client) == Username()) {
@@ -115,21 +137,14 @@ void HichessServer::removeClient(QWebSocket *client)
     showServerInfo();
 }
 
-void HichessServer::processBinaryMessage(QWebSocket *client, const QByteArray &message)
+void Server::processUserInfo(QWebSocket *client, const QString &payload)
 {
-    Packet packet = Packet::fromByteArray(message);
+    QRegularExpression rx("[A-Za-z0-9_]{6,15}");
+    if (rx.match(payload).hasMatch()) {
+        qDebug() << "Username: " << payload;
 
-    switch (packet.type) {
-    case NONE: {
-        break;
-    }
-    case USER_INFO: {
-
-        Username username = packet.payload;
-        qDebug() << "Username: " << username;
-
-        m_playerQueue.enqueue({username, client});
-        m_playerMap.insert(username, client);
+        m_playerQueue.enqueue({payload, client});
+        m_playerMap.insert(payload, client);
 
         if (m_playerQueue.size() > 1) {
             qDebug() << "There are more than 1 queued players. Found pair for a game...";
@@ -140,14 +155,29 @@ void HichessServer::processBinaryMessage(QWebSocket *client, const QByteArray &m
             else
                 m_gameSet << qMakePair(game.second, game.first);
         }
+    }
 
-        showServerInfo();
+    showServerInfo();
+}
+
+void Server::processMessage(QWebSocket *client, const QString &payload)
+{
+
+}
+
+void Server::processMove(QWebSocket *client, const QString &payload)
+{
+
+}
+
+void Server::processBinaryMessage(QWebSocket *client, const QByteArray &message)
+{
+    Packet packet = Packet::deserialize(message);
+
+    switch (packet.detailsType) {
+    case Packet::NONE:
         break;
-    }
-    case MESSAGE: {
-        break;
-    }
-    case MOVE: {
-    }
+    default:
+        m_functionMapper[packet.detailsType](client, message);
     }
 }
