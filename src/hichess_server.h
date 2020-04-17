@@ -8,22 +8,28 @@
 
 namespace Hichess {
 
+enum class Color { White = 0, Black };
+
 struct Packet
 {
-    enum DetailsType {
-        NONE = 0,
-        USER_INFO,
-        MESSAGE,
-        MOVE
+    enum ContentType : quint8 {
+        None = 0,
+        UserInfo,
+        Message,
+        ServerMessage,
+        Move,
+        Error
     };
 
-    DetailsType detailsType = NONE;
-    QString payload;
+    QList<quint8> uint8Buffer = {None};
+    ContentType contentType = None;
+    QString payload = QString();
 
     Packet() = default;
-    Packet(DetailsType detailsType, const QString &payload);
+    Packet(const QList<quint8>&, const QString&);
     QByteArray serialize();
     static Packet deserialize(const QByteArray&);
+    ~Packet() = default;
 };
 
 using Username = QString;
@@ -38,19 +44,20 @@ class Server : public QObject
 public:
     explicit Server(QObject *parent = nullptr);
 
-private slots:
-    void addClient();
-    void removeClient(QWebSocket*);
-
 private:
     QUdpSocket *m_udpServer;
     QWebSocketServer *m_webServer;
     QQueue<Player> m_playerQueue;
     QMap<Username, QWebSocket*> m_playerMap;
     QSet<Game> m_gameSet;
-    QMap<Packet::DetailsType, ProcessPayloadFn_t> m_functionMapper;
+    QMap<Packet::ContentType, ProcessPayloadFn_t> m_functionMapper;
 
     void showServerInfo();
+
+    qint64 sendPacket(QWebSocket*, const QList<quint8>&, const QString&);
+    void addClient();
+    void removeClient(QWebSocket*);
+
     void processUserInfo(QWebSocket*, const QString&);
     void processMessage(QWebSocket*, const QString&);
     void processMove(QWebSocket*, const QString&);

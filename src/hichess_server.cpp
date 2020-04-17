@@ -7,8 +7,9 @@ namespace {
 constexpr auto WEB_PORT = 54545;
 }
 
-Packet::Packet(DetailsType detailsType, const QString &payload)
-    : detailsType(detailsType)
+Packet::Packet(const QList<quint8> &uint8Buffer, const QString &payload)
+    : uint8Buffer(uint8Buffer)
+    , contentType(static_cast<ContentType>(uint8Buffer.front()))
     , payload(payload)
 {}
 
@@ -17,8 +18,10 @@ QByteArray Packet::serialize()
     QByteArray bytearray;
     QDataStream datastream(&bytearray, QIODevice::WriteOnly);
 
-    datastream << static_cast<quint8>(detailsType);
     datastream << payload;
+    for (auto num : uint8Buffer) {
+        datastream << num;
+    }
 
     return bytearray;
 }
@@ -28,11 +31,17 @@ Packet Packet::deserialize(const QByteArray &bytearray)
     Packet packet;
     QDataStream datastream(bytearray);
 
-    quint8 detailsT;
-    datastream >> detailsT;
-    packet.detailsType = static_cast<DetailsType>(detailsT);
-
     datastream >> packet.payload;
+    quint8 contentType;
+    datastream >> contentType;
+    packet.contentType = static_cast<ContentType>(contentType);
+
+    packet.uint8Buffer.reserve(bytearray.size() - packet.payload.size());
+    for (int i = 0; i < bytearray.size(); i++) {
+        quint8 data;
+        datastream >> data;
+        packet.uint8Buffer << data;
+    }
 
     return packet;
 }
@@ -40,15 +49,14 @@ Packet Packet::deserialize(const QByteArray &bytearray)
 Server::Server(QObject *parent)
     : QObject(parent)
 {
-    m_udpServer = new QUdpSocket(this);
     m_webServer = new QWebSocketServer("Server", QWebSocketServer::NonSecureMode, this);
 
     using namespace std::placeholders;
     m_functionMapper =
     {
-        {Packet::USER_INFO, std::bind(&Server::processUserInfo, this, _1, _2)},
-        {Packet::MESSAGE, std::bind(&Server::processMessage, this, _1, _2)},
-        {Packet::MOVE, std::bind(&Server::processMove, this, _1, _2)}
+        {Packet::UserInfo, std::bind(&Server::processUserInfo, this, _1, _2)},
+        {Packet::Message, std::bind(&Server::processMessage, this, _1, _2)},
+        {Packet::Move, std::bind(&Server::processMove, this, _1, _2)}
     };
 
     connect(m_webServer, &QWebSocketServer::newConnection, this, &Server::addClient);
@@ -73,7 +81,7 @@ void Server::showServerInfo()
         dbg << "None\n";
 
     dbg << "\n===Players===\n";
-    for (auto it = m_playerMap.begin(); it != m_playerMap.end(); ++it)
+    for (auto it = m_playerMap.begin(); it != m_playerMap.end(); it++)
         dbg << "(" << it.key() << ", " << it.value() << ")\n";
     if (m_playerMap.isEmpty())
         dbg << "None\n";
@@ -85,6 +93,11 @@ void Server::showServerInfo()
         dbg << "None\n";
 }
 
+qint64 Server::sendPacket(QWebSocket *client, const QList<quint8>& uint8Buffer, const QString &payload)
+{
+    Packet packet(uint8Buffer, payload);
+    return client->sendBinaryMessage(packet.serialize());
+}
 
 void Server::addClient()
 {
@@ -98,10 +111,10 @@ void Server::addClient()
     }
     qDebug() << "Client: " << client;
 
-    connect(client, &QWebSocket::disconnected, std::bind(&Server::removeClient, this, client));
-    connect(client, &QWebSocket::binaryMessageReceived, [this, client](const QByteArray &message) {
-        processBinaryMessage(client, message);
-    });
+    connect(client, &QWebSocket::disconnected,
+            std::bind(&Server::removeClient, this, client));
+    connect(client, &QWebSocket::binaryMessageReceived,
+            std::bind(&Server::processBinaryMessage, this, client, std::placeholders::_1));
     connect(client, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error), this,
             [](QAbstractSocket::SocketError error){ qDebug() << error; });
 }
@@ -116,23 +129,28 @@ void Server::removeClient(QWebSocket *client)
     qDebug() << m_playerMap;
 
     Username username = m_playerMap.key(client);
-    Player player = {username, client};
+    auto player1 = Player{username, client};
 
-    qDebug() << "Found the player to remove" << player;
+    qDebug() << "Found the player to remove" << player1;
 
-    m_playerQueue.removeAll(player);
+    m_playerQueue.removeAll(player1);
     m_playerMap.remove(username);
-    for (auto it = m_gameSet.begin(); it != m_gameSet.end(); ++it)
-        if (it->first == player) {
+    for (auto it = m_gameSet.begin(); it != m_gameSet.end(); it++) {
+        if (it->first == player1) {
+            Player player2 = it->second;
             m_gameSet.erase(it);
-            Player secondP = it->second;
             // TODO adjust player removal
-            secondP.second->sendTextMessage(QStringLiteral("Player %0 left the game").arg(secondP.first));
+            sendPacket(player2.second, {Packet::Message}, QStringLiteral("Player %0 left the game").arg(player1.first));
             break;
+        } else if (it->second == player1) {
+            Player player2 = it->first;
+            m_gameSet.erase(it);
+            sendPacket(player2.second, {Packet::Message}, QStringLiteral("Player %0 left the game").arg(player1.first));
         }
+    }
 
     client->deleteLater();
-    qDebug() << "Player" << player << "left the game";
+    qDebug() << "Player" << player1 << "left the game";
 
     showServerInfo();
 }
@@ -140,20 +158,31 @@ void Server::removeClient(QWebSocket *client)
 void Server::processUserInfo(QWebSocket *client, const QString &payload)
 {
     QRegularExpression rx("[A-Za-z0-9_]{6,15}");
+
     if (rx.match(payload).hasMatch()) {
-        qDebug() << "Username: " << payload;
+        if (m_playerMap.find(payload) == m_playerMap.end()) {
+            qDebug() << "Username: " << payload;
 
-        m_playerQueue.enqueue({payload, client});
-        m_playerMap.insert(payload, client);
+            m_playerMap.insert(payload, client);
 
-        if (m_playerQueue.size() > 1) {
-            qDebug() << "There are more than 1 queued players. Found pair for a game...";
+            if (m_playerQueue.size() > 0) {
+                qDebug() << "There are more than 1 queued players. Found pair for a game...";
 
-            Game game = {m_playerQueue.dequeue(), m_playerQueue.dequeue()};
-            if (QRandomGenerator::global()->bounded(true))
+                Player player1 = {payload, client};
+                Player player2 = m_playerQueue.dequeue();
+
+                Game game;
+                if (QRandomGenerator::global()->bounded(true))
+                    game = qMakePair(player1, player2);
+                else
+                    game = qMakePair(player2, player1);
+
                 m_gameSet << game;
-            else
-                m_gameSet << qMakePair(game.second, game.first);
+
+                sendPacket(game.first.second, {static_cast<quint8>(Packet::UserInfo), static_cast<quint8>(Color::White)}, player1.first);
+                sendPacket(game.second.second, {static_cast<quint8>(Packet::UserInfo), static_cast<quint8>(Color::Black)}, player2.first);
+            } else
+                m_playerQueue.enqueue({payload, client});
         }
     }
 
@@ -162,22 +191,23 @@ void Server::processUserInfo(QWebSocket *client, const QString &payload)
 
 void Server::processMessage(QWebSocket *client, const QString &payload)
 {
-
 }
 
 void Server::processMove(QWebSocket *client, const QString &payload)
 {
-
+    for (auto it = m_gameSet.begin(); it != m_gameSet.end(); it++) {
+        if (it->first.second == client)
+            sendPacket(it->second.second, {Packet::Move}, payload);
+        else if (it->second.second == client)
+            sendPacket(it->first.second, {Packet::Move}, payload);
+    }
 }
 
 void Server::processBinaryMessage(QWebSocket *client, const QByteArray &message)
 {
     Packet packet = Packet::deserialize(message);
+    qDebug() << packet.contentType << packet.payload;
 
-    switch (packet.detailsType) {
-    case Packet::NONE:
-        break;
-    default:
-        m_functionMapper[packet.detailsType](client, message);
-    }
+    if (packet.contentType != Packet::None)
+        m_functionMapper[packet.contentType](client, packet.payload);
 }
