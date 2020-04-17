@@ -5,6 +5,12 @@ using namespace Hichess;
 
 namespace {
 constexpr auto WEB_PORT = 54545;
+
+template<class T>
+uint8_t toUInt8(T arg)
+{
+    return static_cast<typename std::underlying_type<T>::type>(arg);
+}
 }
 
 Packet::Packet(const QList<quint8> &uint8Buffer, const QString &payload)
@@ -179,8 +185,8 @@ void Server::processUserInfo(QWebSocket *client, const QString &payload)
 
                 m_gameSet << game;
 
-                sendPacket(game.first.second, {static_cast<quint8>(Packet::UserInfo), static_cast<quint8>(Color::White)}, player1.first);
-                sendPacket(game.second.second, {static_cast<quint8>(Packet::UserInfo), static_cast<quint8>(Color::Black)}, player2.first);
+                sendPacket(game.first.second, {toUInt8<Packet::ContentType>(Packet::UserInfo), toUInt8<Color>(Color::White)}, player1.first);
+                sendPacket(game.second.second, {toUInt8<Packet::ContentType>(Packet::UserInfo), toUInt8<Color>(Color::Black)}, player2.first);
             } else
                 m_playerQueue.enqueue({payload, client});
         }

@@ -8,11 +8,11 @@
 
 namespace Hichess {
 
-enum class Color { White = 0, Black };
+enum class Color : uint8_t { White = 0, Black };
 
 struct Packet
 {
-    enum ContentType : quint8 {
+    enum ContentType : uint8_t {
         None = 0,
         UserInfo,
         Message,
