@@ -8,25 +8,24 @@
 
 namespace Hichess {
 
-enum class Color : uint8_t { White = 0, Black };
-
 struct Packet
 {
     enum ContentType : uint8_t {
         None = 0,
-        UserInfo,
+        PlayerData,
+        WhitePlayerData,
+        BlackPlayerData,
         Message,
         ServerMessage,
         Move,
         Error
     };
 
-    QList<quint8> uint8Buffer = {None};
     ContentType contentType = None;
     QString payload = QString();
 
     Packet() = default;
-    Packet(const QList<quint8>&, const QString&);
+    Packet(ContentType, const QString&);
     QByteArray serialize();
     static Packet deserialize(const QByteArray&);
     ~Packet() = default;
@@ -35,7 +34,7 @@ struct Packet
 using Username = QString;
 using Player = QPair<Username, QWebSocket*>;
 using Game = QPair<Player, Player>;
-using ProcessPayloadFn_t = std::function<void(QWebSocket*, const QString&)>;
+using ProcessPacketFn_t = std::function<void(QWebSocket*, const Packet&)>;
 
 class Server : public QObject
 {
@@ -50,17 +49,17 @@ private:
     QQueue<Player> m_playerQueue;
     QMap<Username, QWebSocket*> m_playerMap;
     QSet<Game> m_gameSet;
-    QMap<Packet::ContentType, ProcessPayloadFn_t> m_functionMapper;
+    QMap<Packet::ContentType, ProcessPacketFn_t> m_functionMapper;
 
     void showServerInfo();
 
-    qint64 sendPacket(QWebSocket*, const QList<quint8>&, const QString&);
+    qint64 sendPacket(QWebSocket*, Packet::ContentType, const QString&);
     void addClient();
     void removeClient(QWebSocket*);
 
-    void processUserInfo(QWebSocket*, const QString&);
-    void processMessage(QWebSocket*, const QString&);
-    void processMove(QWebSocket*, const QString&);
+    void processPlayerData(QWebSocket*, const Packet &packet);
+    void processMessage(QWebSocket*, const Packet &packet);
+    void processMove(QWebSocket*, const Packet &packet);
     void processBinaryMessage(QWebSocket*, const QByteArray&);
 };
 }
