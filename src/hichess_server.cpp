@@ -133,10 +133,12 @@ void Server::removeClient(QWebSocket *client)
             // TODO adjust player removal
             sendPacket(player2.second, Packet::Message, QStringLiteral("Player %0 left the game").arg(player1.first));
             break;
-        } else if (it->second == player1) {
+        }
+        if (it->second == player1) {
             Player player2 = it->first;
             m_gameSet.erase(it);
             sendPacket(player2.second, Packet::Message, QStringLiteral("Player %0 left the game").arg(player1.first));
+            break;
         }
     }
 
