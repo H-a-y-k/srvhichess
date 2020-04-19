@@ -1,7 +1,7 @@
 QT -= gui
 QT += network websockets core
 
-CONFIG += c++14 console
+CONFIG += c++17 console
 CONFIG -= app_bundle
 
 # The following define makes your compiler emit warnings if you use

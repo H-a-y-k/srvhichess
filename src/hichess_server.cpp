@@ -84,6 +84,23 @@ void Server::showServerInfo()
         dbg << "None\n";
 }
 
+QPair<QWebSocket*, QSet<Game>::iterator> Server::getOpponentClientOf(QWebSocket *client1)
+{
+    QWebSocket *client2 = nullptr;
+
+    for (auto it = m_gameSet.begin(); it != m_gameSet.end(); it++) {
+        if (it->first.second == client1)
+            client2 = it->second.second;
+        else if (it->second.second == client1)
+            client2 = it->first.second;
+
+        if (client2 != nullptr)
+            return qMakePair(client2, it);
+    }
+
+    return qMakePair(client2, m_gameSet.end());
+}
+
 qint64 Server::sendPacket(QWebSocket *client, Packet::ContentType contentType, const QString &payload)
 {
     Packet packet(contentType, payload);
@@ -120,26 +137,17 @@ void Server::removeClient(QWebSocket *client)
     qDebug() << m_playerMap;
 
     Username username = m_playerMap.key(client);
-    auto player1 = Player{username, client};
+    auto player1 = Player(username, client);
 
     qDebug() << "Found the player to remove" << player1;
 
     m_playerQueue.removeAll(player1);
     m_playerMap.remove(username);
-    for (auto it = m_gameSet.begin(); it != m_gameSet.end(); it++) {
-        if (it->first == player1) {
-            Player player2 = it->second;
+
+    auto [opponentClient, it] = getOpponentClientOf(client);
+    if (opponentClient != nullptr) {
             m_gameSet.erase(it);
-            // TODO adjust player removal
-            sendPacket(player2.second, Packet::Message, QStringLiteral("Player %0 left the game").arg(player1.first));
-            break;
-        }
-        if (it->second == player1) {
-            Player player2 = it->first;
-            m_gameSet.erase(it);
-            sendPacket(player2.second, Packet::Message, QStringLiteral("Player %0 left the game").arg(player1.first));
-            break;
-        }
+            sendPacket(opponentClient, Packet::Message, QStringLiteral("Player %0 left the game").arg(player1.first));
     }
 
     client->deleteLater();
@@ -150,26 +158,23 @@ void Server::removeClient(QWebSocket *client)
 
 void Server::processPlayerData(QWebSocket *client, const Packet &packet)
 {
-    QRegularExpression rx("[A-Za-z0-9_]{6,15}");
-
     Username username = packet.payload;
+
+    QRegularExpression rx("[A-Za-z0-9_]{6,15}");
     if (rx.match(username).hasMatch()) {
         if (m_playerMap.find(username) == m_playerMap.end()) {
             qDebug() << "Username: " << username;
 
             m_playerMap.insert(username, client);
 
-            if (m_playerQueue.size() > 0) {
+            if (!m_playerQueue.isEmpty()) {
                 qDebug() << "There are more than 1 queued players. Found pair for a game...";
 
-                Player player1 = {username, client};
+                auto player1 = Player(username, client);
                 Player player2 = m_playerQueue.dequeue();
 
-                Game game;
-                if (QRandomGenerator::global()->bounded(true))
-                    game = qMakePair(player1, player2);
-                else
-                    game = qMakePair(player2, player1);
+                Game game = QRandomGenerator::global()->bounded(true) ? qMakePair(player1, player2)
+                                                                      : qMakePair(player2, player1);
 
                 m_gameSet << game;
 
@@ -190,12 +195,8 @@ void Server::processMessage(QWebSocket *client, const Packet &packet)
 void Server::processMove(QWebSocket *client, const Packet &packet)
 {
     QString move = packet.payload;
-    for (auto it = m_gameSet.begin(); it != m_gameSet.end(); it++) {
-        if (it->first.second == client)
-            sendPacket(it->second.second, Packet::Move, move);
-        else if (it->second.second == client)
-            sendPacket(it->first.second, Packet::Move, move);
-    }
+    auto [opponentClient, _] = getOpponentClientOf(client);
+    sendPacket(opponentClient, Packet::Move, move);
 }
 
 void Server::processBinaryMessage(QWebSocket *client, const QByteArray &message)

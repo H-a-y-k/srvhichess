@@ -52,14 +52,15 @@ private:
     QMap<Packet::ContentType, ProcessPacketFn_t> m_functionMapper;
 
     void showServerInfo();
+    QPair<QWebSocket*, QSet<Game>::iterator> getOpponentClientOf(QWebSocket*);
 
     qint64 sendPacket(QWebSocket*, Packet::ContentType, const QString&);
     void addClient();
     void removeClient(QWebSocket*);
 
-    void processPlayerData(QWebSocket*, const Packet &packet);
-    void processMessage(QWebSocket*, const Packet &packet);
-    void processMove(QWebSocket*, const Packet &packet);
+    void processPlayerData(QWebSocket*, const Packet&);
+    void processMessage(QWebSocket*, const Packet&);
+    void processMove(QWebSocket*, const Packet&);
     void processBinaryMessage(QWebSocket*, const QByteArray&);
 };
 }
