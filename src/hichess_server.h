@@ -2,9 +2,8 @@
 
 #include <QtCore>
 #include <QtWebSockets>
-#include <QtNetwork>
 #include <functional>
-
+#include <utility>
 
 namespace Hichess {
 
@@ -32,8 +31,8 @@ struct Packet
 };
 
 using Username = QString;
-using Player = QPair<Username, QWebSocket*>;
-using Game = QPair<Player, Player>;
+using Player = std::pair<Username, QWebSocket*>;
+using Game = std::pair<Player, Player>;
 using ProcessPacketFn_t = std::function<void(QWebSocket*, const Packet&)>;
 
 class Server : public QObject
@@ -44,7 +43,6 @@ public:
     explicit Server(QObject *parent = nullptr);
 
 private:
-    QUdpSocket *m_udpServer;
     QWebSocketServer *m_webServer;
     QQueue<Player> m_playerQueue;
     QMap<Username, QWebSocket*> m_playerMap;
@@ -52,7 +50,7 @@ private:
     QMap<Packet::ContentType, ProcessPacketFn_t> m_functionMapper;
 
     void showServerInfo();
-    QPair<QWebSocket*, QSet<Game>::iterator> getOpponentClientOf(QWebSocket*);
+    std::pair<QWebSocket*, QSet<Game>::iterator> getOpponentClientOf(QWebSocket*);
 
     qint64 sendPacket(QWebSocket*, Packet::ContentType, const QString&);
     void addClient();
