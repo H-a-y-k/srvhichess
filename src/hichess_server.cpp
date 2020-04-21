@@ -1,10 +1,27 @@
 #include "hichess_server.h"
 #include <memory>
+#include <random>
 
 using namespace Hichess;
 
 namespace {
 constexpr auto WEB_PORT = 54545;
+
+bool isUsernameValid(const Username &username)
+{
+    QRegularExpression rx("[A-Za-z0-9_]{6,15}");
+    return rx.match(username).hasMatch();
+}
+
+Game makeRandomShuffledGame(const Player &p1, const Player &p2)
+{
+    std::default_random_engine engine;
+    std::bernoulli_distribution dist(0.5);
+
+    if (dist(engine))
+        return std::make_pair(p1, p2);
+    return std::make_pair(p2, p1);
+}
 }
 
 Packet::Packet(ContentType contentType, const QString &payload)
@@ -160,34 +177,22 @@ void Server::processPlayerData(QWebSocket *client, const Packet &packet)
 {
     Username username = packet.payload;
 
-    QRegularExpression rx("[A-Za-z0-9_]{6,15}");
-    if (rx.match(username).hasMatch()) {
-        if (m_playerMap.find(username) == m_playerMap.end()) {
-            qDebug() << "Username: " << username;
+    if (isUsernameValid(username) && m_playerMap.find(username) == m_playerMap.end()) {
+        qDebug() << "Username: " << username;
 
-            m_playerMap.insert(username, client);
+        m_playerMap.insert(username, client);
 
-            if (!m_playerQueue.isEmpty()) {
-                qDebug() << "There are more than 1 queued players. Found pair for a game...";
+        if (Player player1(username, client); !m_playerQueue.isEmpty()) {
+            qDebug() << "There are more than 1 queued players. Found pair for a game...";
 
-                Player player1(username, client);
-                Player player2 = m_playerQueue.dequeue();
+            Game game = makeRandomShuffledGame(player1, m_playerQueue.dequeue());
 
-                auto game = [](Player p1, Player p2) -> Game {
-                    srand(static_cast<uint>(time(nullptr)));
+            m_gameSet << game;
 
-                    if (rand() % 2 == 0)
-                        return std::make_pair(p1, p2);
-                    return std::make_pair(p2, p1);
-                }(player1, player2);
-
-                m_gameSet << game;
-
-                sendPacket(game.first.second, Packet::WhitePlayerData, game.second.first);
-                sendPacket(game.second.second, Packet::BlackPlayerData, game.first.first);
-            } else
-                m_playerQueue.enqueue({username, client});
-        }
+            sendPacket(game.first.second, Packet::WhitePlayerData, game.second.first);
+            sendPacket(game.second.second, Packet::BlackPlayerData, game.first.first);
+        } else
+            m_playerQueue.enqueue(player1);
     }
 
     showServerInfo();
