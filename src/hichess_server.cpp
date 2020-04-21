@@ -148,7 +148,7 @@ void Server::removeClient(QWebSocket *client)
 {
     qDebug() << Q_FUNC_INFO;
     if (m_playerMap.key(client).isEmpty()) {
-        qDebug() << " found";
+        qDebug() << "Client not found";
         return;
     }
     qDebug() << m_playerMap;
@@ -156,15 +156,13 @@ void Server::removeClient(QWebSocket *client)
     Username username = m_playerMap.key(client);
     Player player1(username, client);
 
-    qDebug() << "Found the player to remove" << player1;
-
     m_playerQueue.removeAll(player1);
     m_playerMap.remove(username);
 
-    auto [opponentClient, it] = getOpponentClientOf(client);
-    if (opponentClient != nullptr) {
+    if (auto [opponentClient, it] = getOpponentClientOf(client); opponentClient != nullptr) {
         m_gameSet.erase(it);
-        sendPacket(opponentClient, Packet::Message, QStringLiteral("Player %0 left the game").arg(player1.first));
+        sendPacket(opponentClient, Packet::Message,
+                   QStringLiteral("Player %0 left the game").arg(player1.first));
     }
 
     client->deleteLater();
@@ -182,7 +180,7 @@ void Server::processPlayerData(QWebSocket *client, const Packet &packet)
 
         m_playerMap.insert(username, client);
 
-        if (Player player1(username, client); !m_playerQueue.isEmpty()) {
+        if (auto player1 = Player(username, client); !m_playerQueue.isEmpty()) {
             qDebug() << "There are more than 1 queued players. Found pair for a game...";
 
             Game game = makeRandomShuffledGame(player1, m_playerQueue.dequeue());
