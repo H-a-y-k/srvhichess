@@ -17,7 +17,7 @@ struct Packet
         Message,
         ServerMessage,
         Move,
-        Error
+        Errors
     };
 
     ContentType contentType = None;

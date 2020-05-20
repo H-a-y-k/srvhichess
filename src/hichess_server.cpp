@@ -71,7 +71,7 @@ Server::Server(QObject *parent)
     connect(m_webServer, &QWebSocketServer::serverError, this,
             [](QWebSocketProtocol::CloseCode closeCode) { qDebug() << closeCode; });
 
-    QHostAddress address("192.168.56.1");
+    QHostAddress address("192.168.1.2");
     qDebug() << "Listening" << m_webServer->listen(address, WEB_PORT);
     qDebug() << "Address" << address;
     qDebug() << "Port" << WEB_PORT;
@@ -191,13 +191,16 @@ void Server::processPlayerData(QWebSocket *client, const Packet &packet)
             sendPacket(game.second.second, Packet::BlackPlayerData, game.first.first);
         } else
             m_playerQueue.enqueue(player1);
-    }
+    } else
+        sendPacket(client, Packet::Errors, "Invalid player data");
 
     showServerInfo();
 }
 
 void Server::processMessage(QWebSocket *client, const Packet &packet)
 {
+    auto [opponent, _] = getOpponentClientOf(client); Q_UNUSED(_)
+    sendPacket(opponent, Packet::Message, packet.payload);
 }
 
 void Server::processMove(QWebSocket *client, const Packet &packet)
